@@ -1,0 +1,51 @@
+# Install LAMP server with laravel
+--- 
+- hosts: all
+  user: ansible
+  sudo: yes
+  vars:
+   user_name: subuser
+   user_password: userpassword345345
+   db_user: dbusername
+   db_user_password: dbuserpassword
+   site_fqdn: something.example.com
+  tasks:
+
+   - name: Test connection
+     ping:
+
+   - name: Creating user "{{ user_name }}" with password
+     user: name={{ user_name }} password={{ user_password |password_hash('sha512') }}
+
+   - name: Create MySQL database "{{user_name}}"
+     mysql_db: name={{user_name}} state=present
+
+   - name: Create MySQL user "{{user_name}}" with password and grant permissions to "{{user_name}}" database
+     mysql_user: name={{user_name}}  password={{user_password}} priv={{user_name}}.*:ALL state=present
+
+   - name: Create MySQL user "{{db_user}}" with password and grant limited permissions to "{{user_name}}" database
+     mysql_user: name={{db_user}}  password={{db_user_password}} priv={{user_name}}.*:INSERT,UPDATE,SELECT:ALL state=present
+
+   - name: create virtual host for  "{{site_fqdn}}"
+     template: src=host.conf dest=/etc/apache2/sites-available/{{user_name}}.conf
+
+   - name: Install laravel (please be patient)
+     shell: sudo -u {{user_name}} composer create-project --prefer-dist laravel/laravel {{site_fqdn}}
+     args:
+       chdir: /home/{{user_name}}
+
+   - name: Create symlink for public directory
+     file:
+       src: /home/{{user_name}}/{{site_fqdn}}/public
+       dest: /home/{{user_name}}/public
+       state: link
+
+   - name: Change permissions
+     shell: chown -R {{user_name}}:{{user_name}}  /home/{{user_name}}
+
+   - name: Enable virtaulhost
+     shell: a2ensite {{user_name}}
+
+   - name: Service apache reload
+     service: name=apache2 state=reloaded
+
